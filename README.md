@@ -1,4 +1,4 @@
-# discord-deb2arch
+# discord-latest-bin
 
 Converts Discord's official `.deb` release into a native Arch package using debtap. The community repo tends to lag behind official releases, so this handles the fetch and install automatically.
 
@@ -10,7 +10,7 @@ This repository serves two purposes:
 ## Installing Discord
 
 ```bash
-yay -S discord-deb2arch
+yay -S discord-latest-bin
 ```
 
 This replaces the `discord` package from the community repo with the latest upstream release.
@@ -40,7 +40,7 @@ The update script is for keeping the AUR package up-to-date when Discord release
 Clone the AUR remote into this repo:
 
 ```bash
-git remote add aur ssh://aur@aur.archlinux.org/discord-deb2arch.git
+git remote add aur ssh://aur@aur.archlinux.org/discord-latest-bin.git
 ```
 
 Then generate the initial `.SRCINFO` and push:
@@ -61,9 +61,9 @@ Run the updater daily so the AUR package stays current without manual effort.
 ```bash
 mkdir -p ~/.config/systemd/user
 
-cat > ~/.config/systemd/user/discord-deb2arch.service <<'EOF'
+cat > ~/.config/systemd/user/discord-latest-bin.service <<'EOF'
 [Unit]
-Description=discord-deb2arch AUR updater
+Description=discord-latest-bin AUR updater
 After=network-online.target
 
 [Service]
@@ -73,9 +73,9 @@ StandardOutput=journal
 StandardError=journal
 EOF
 
-cat > ~/.config/systemd/user/discord-deb2arch.timer <<'EOF'
+cat > ~/.config/systemd/user/discord-latest-bin.timer <<'EOF'
 [Unit]
-Description=Run discord-deb2arch updater daily
+Description=Run discord-latest-bin updater daily
 
 [Timer]
 OnCalendar=daily
@@ -86,7 +86,7 @@ WantedBy=timers.target
 EOF
 
 systemctl --user daemon-reload
-systemctl --user enable --now discord-deb2arch.timer
+systemctl --user enable --now discord-latest-bin.timer
 ```
 
 ## License

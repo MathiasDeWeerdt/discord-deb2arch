@@ -1,11 +1,11 @@
 # Maintainer: Mathias DeWeerdt <your@email.com>
-pkgname=discord-deb2arch
+pkgname=discord-latest-bin
 pkgver=0.0.126
 pkgrel=1
 pkgdesc="Discord - All-in-one voice, video and text communication (latest upstream .deb release)"
 arch=('x86_64')
 url="https://discord.com"
-license=('custom')
+license=('LicenseRef-custom')
 depends=('gtk3' 'nss' 'libxss' 'alsa-lib' 'libnotify' 'xdg-utils' 'libglvnd')
 optdepends=(
   'libappindicator-gtk3: systray support'
@@ -13,8 +13,10 @@ optdepends=(
 )
 provides=('discord')
 conflicts=('discord')
+# Discord ships pre-built Electron binaries — stripping them breaks the app
+options=('!strip' '!debug')
 source=("discord-${pkgver}.deb::https://stable.dl2.discordapp.net/apps/linux/${pkgver}/discord-${pkgver}.deb")
-sha256sums=('SKIP')
+sha256sums=('88eb8e92916e913624c1e13109a843737e086c7086bbccb9a2b9e8d2a7c19cc3')
 
 package() {
   cd "${srcdir}"
@@ -25,6 +27,11 @@ package() {
   [[ -n "${data_tar}" ]] || { echo "error: data.tar.* not found in .deb"; exit 1; }
   tar xf "${data_tar}" -C "${pkgdir}"
 
-  install -Dm644 "${pkgdir}/usr/share/discord/resources/LICENSE.html" \
-    "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE.html" 2>/dev/null || true
+  # Install license — search common locations since path varies between releases
+  local license_file
+  license_file=$(find "${pkgdir}/usr/share/discord" -name 'LICENSE.html' | head -1 || true)
+  if [[ -n "${license_file}" ]]; then
+    install -Dm644 "${license_file}" \
+      "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE.html"
+  fi
 }
