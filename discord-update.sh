@@ -165,6 +165,11 @@ push_to_aur() {
   git config user.email "$(git -C "${REPO_DIR}" config user.email)"
   git config user.name  "$(git -C "${REPO_DIR}" config user.name)"
   git add PKGBUILD .SRCINFO
+  if git diff --cached --quiet; then
+    warn "AUR already has these exact files — nothing to push"
+    rm -rf "${tmpdir}"
+    return
+  fi
   git commit -m "update to ${REMOTE_VERSION}"
   git push origin master
   rm -rf "${tmpdir}"
