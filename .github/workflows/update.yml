@@ -76,15 +76,15 @@ jobs:
           chmod 600 ~/.ssh/aur_key
           ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
 
-          # AUR does not allow subdirectories — push only PKGBUILD and .SRCINFO
-          # from a clean temporary repo to avoid including .github/ etc.
+          # Clone the existing AUR repo to build on top of its history.
+          # AUR rejects force pushes and repos containing subdirectories.
           TMPDIR=$(mktemp -d)
-          git init "$TMPDIR"
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/aur_key" \
+            git clone ssh://aur@aur.archlinux.org/discord-latest-bin.git "$TMPDIR"
           cp PKGBUILD .SRCINFO "$TMPDIR/"
           cd "$TMPDIR"
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add PKGBUILD .SRCINFO
           git commit -m "update to ${VERSION}"
-          GIT_SSH_COMMAND="ssh -i ~/.ssh/aur_key" \
-            git push --force ssh://aur@aur.archlinux.org/discord-latest-bin.git master
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/aur_key" git push origin master
