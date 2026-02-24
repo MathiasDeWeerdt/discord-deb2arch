@@ -1,18 +1,30 @@
-# Maintainer: Mathias <your@email.com>
+# Maintainer: Mathias DeWeerdt <your@email.com>
 pkgname=discord-deb2arch
-pkgver=1.0.0
+pkgver=0.0.126
 pkgrel=1
-pkgdesc="Converts Discord's official .deb release into a native Arch package using debtap. The community repo tends to lag behind official releases, so this handles the fetch and install automatically."
-arch=('any')
-url="https://github.com/MathiasDeWeerdt/discord-deb2arch"
-license=('MIT')
-depends=('wget' 'debtap' 'sudo')
-source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
+pkgdesc="Discord - All-in-one voice, video and text communication (latest upstream .deb release)"
+arch=('x86_64')
+url="https://discord.com"
+license=('custom')
+depends=('gtk3' 'nss' 'libxss' 'alsa-lib' 'libnotify' 'xdg-utils' 'libglvnd')
+optdepends=(
+  'libappindicator-gtk3: systray support'
+  'libayatana-appindicator: systray support'
+)
+provides=('discord')
+conflicts=('discord')
+source=("discord-${pkgver}.deb::https://stable.dl2.discordapp.net/apps/linux/${pkgver}/discord-${pkgver}.deb")
 sha256sums=('SKIP')
 
 package() {
-  cd "${srcdir}/discord-deb2arch-${pkgver}"
-  install -Dm755 discord-update.sh "${pkgdir}/usr/local/bin/discord-update"
-  install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+  cd "${srcdir}"
+  ar x "discord-${pkgver}.deb"
+
+  local data_tar
+  data_tar=$(find . -maxdepth 1 -name 'data.tar.*' | head -1)
+  [[ -n "${data_tar}" ]] || { echo "error: data.tar.* not found in .deb"; exit 1; }
+  tar xf "${data_tar}" -C "${pkgdir}"
+
+  install -Dm644 "${pkgdir}/usr/share/discord/resources/LICENSE.html" \
+    "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE.html" 2>/dev/null || true
 }
-sha256sums=('d3fe1bb36c83bce400756100352581bbc415f3a7a745685c51c39f96a00aead2')

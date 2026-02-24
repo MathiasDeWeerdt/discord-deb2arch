@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# discord-update — install the latest Discord on Arch Linux
-# Converts the official .deb release to a native pacman package via debtap.
+# discord-deb2arch — AUR package update helper
+# Detects new Discord releases, updates the PKGBUILD and .SRCINFO,
+# and pushes the change to AUR.
 
 set -euo pipefail
 IFS=$'\n\t'
 
 SCRIPT_NAME="$(basename "$0")"
-DISCORD_URL="https://discord.com/api/download?platform=linux"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DISCORD_CDN="https://discord.com/api/download?platform=linux"
+PKGBUILD_FILE="${REPO_DIR}/PKGBUILD"
 WORK_DIR=""
 
-# Disable colour codes when not writing to a terminal
 if [[ -t 1 ]]; then
   RED='\033[0;31m' GREEN='\033[0;32m' YELLOW='\033[1;33m'
   BLUE='\033[0;34m' BOLD='\033[1m' RESET='\033[0m'
@@ -19,8 +21,68 @@ fi
 
 info()    { printf "  ${BLUE}::${RESET} %s\n" "$*"; }
 success() { printf "  ${GREEN}ok${RESET}  %s\n" "$*"; }
-warn()    { printf "  ${YELLOW}!!${RESET}  %s\n" "$*"; }
-error()   { printf "  ${RED}!!${RESET}  %s\n" "$*" >&2; }
+warn()    { printf "  ${YELLOW}# Maintainer: Mathias DeWeerdt <your@email.com>
+pkgname=discord-deb2arch
+pkgver=0.0.126
+pkgrel=1
+pkgdesc="Discord - All-in-one voice, video and text communication (latest upstream .deb release)"
+arch=('x86_64')
+url="https://discord.com"
+license=('custom')
+depends=('gtk3' 'nss' 'libxss' 'alsa-lib' 'libnotify' 'xdg-utils' 'libglvnd')
+optdepends=(
+  'libappindicator-gtk3: systray support'
+  'libayatana-appindicator: systray support'
+)
+provides=('discord')
+conflicts=('discord')
+source=("discord-${pkgver}.deb::https://stable.dl2.discordapp.net/apps/linux/${pkgver}/discord-${pkgver}.deb")
+sha256sums=('SKIP')
+
+package() {
+  cd "${srcdir}"
+  ar x "discord-${pkgver}.deb"
+
+  local data_tar
+  data_tar=$(find . -maxdepth 1 -name 'data.tar.*' | head -1)
+  [[ -n "${data_tar}" ]] || { echo "error: data.tar.* not found in .deb"; exit 1; }
+  tar xf "${data_tar}" -C "${pkgdir}"
+
+  install -Dm644 "${pkgdir}/usr/share/discord/resources/LICENSE.html" \
+    "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE.html" 2>/dev/null || true
+}
+EOF{RESET}  %s\n" "$*"; }
+error()   { printf "  ${RED}# Maintainer: Mathias DeWeerdt <your@email.com>
+pkgname=discord-deb2arch
+pkgver=0.0.126
+pkgrel=1
+pkgdesc="Discord - All-in-one voice, video and text communication (latest upstream .deb release)"
+arch=('x86_64')
+url="https://discord.com"
+license=('custom')
+depends=('gtk3' 'nss' 'libxss' 'alsa-lib' 'libnotify' 'xdg-utils' 'libglvnd')
+optdepends=(
+  'libappindicator-gtk3: systray support'
+  'libayatana-appindicator: systray support'
+)
+provides=('discord')
+conflicts=('discord')
+source=("discord-${pkgver}.deb::https://stable.dl2.discordapp.net/apps/linux/${pkgver}/discord-${pkgver}.deb")
+sha256sums=('SKIP')
+
+package() {
+  cd "${srcdir}"
+  ar x "discord-${pkgver}.deb"
+
+  local data_tar
+  data_tar=$(find . -maxdepth 1 -name 'data.tar.*' | head -1)
+  [[ -n "${data_tar}" ]] || { echo "error: data.tar.* not found in .deb"; exit 1; }
+  tar xf "${data_tar}" -C "${pkgdir}"
+
+  install -Dm644 "${pkgdir}/usr/share/discord/resources/LICENSE.html" \
+    "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE.html" 2>/dev/null || true
+}
+EOF{RESET}  %s\n" "$*" >&2; }
 die()     { error "$*"; exit 1; }
 
 header() {
@@ -34,30 +96,25 @@ usage() {
 
 ${BOLD}Usage:${RESET} ${SCRIPT_NAME} [OPTIONS]
 
-  Install the latest Discord release on Arch Linux by converting the
-  official .deb package into a native pacman package via debtap.
+  Checks for a new Discord release, updates the PKGBUILD and .SRCINFO,
+  and pushes the change to AUR.
 
 ${BOLD}Options:${RESET}
-  -f, --force        Skip version check and reinstall
-  -u, --update-db    Refresh the debtap package database first
-  -h, --help         Show this help and exit
-
-${BOLD}Examples:${RESET}
-  ${SCRIPT_NAME}              Update Discord if a newer version is available
-  ${SCRIPT_NAME} --force      Reinstall the current latest version
-  ${SCRIPT_NAME} --update-db  Refresh debtap DB then update
+  -f, --force      Update even if already on the latest version
+  -d, --dry-run    Show what would change without writing anything
+  -h, --help       Show this help and exit
 
 EOF
 }
 
 OPT_FORCE=false
-OPT_UPDATE_DB=false
+OPT_DRY_RUN=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -f|--force)      OPT_FORCE=true     ;;
-    -u|--update-db)  OPT_UPDATE_DB=true ;;
-    -h|--help)       usage; exit 0      ;;
+    -f|--force)    OPT_FORCE=true   ;;
+    -d|--dry-run)  OPT_DRY_RUN=true ;;
+    -h|--help)     usage; exit 0    ;;
     *) die "Unknown option: '$1' — run '${SCRIPT_NAME} --help' for usage." ;;
   esac
   shift
@@ -72,7 +129,7 @@ check_deps() {
   header "Dependencies"
   local -a missing=()
 
-  for cmd in wget debtap pacman sudo; do
+  for cmd in wget ar makepkg git sha256sum sed; do
     if command -v "${cmd}" &>/dev/null; then
       success "${cmd}"
     else
@@ -81,106 +138,109 @@ check_deps() {
     fi
   done
 
-  if (( ${#missing[@]} > 0 )); then
-    warn "Missing: ${missing[*]}"
-    [[ " ${missing[*]} " == *" debtap "* ]] && \
-      info "Install debtap with: yay -S debtap"
-    exit 1
-  fi
-}
-
-update_debtap_db() {
-  header "Updating debtap database"
-  if sudo debtap -u; then
-    success "database updated"
-  else
-    warn "database update failed, continuing with existing database"
-  fi
+  (( ${#missing[@]} > 0 )) && { warn "Missing: ${missing[*]}"; exit 1; }
 }
 
 resolve_remote_version() {
-  header "Checking latest version"
+  header "Checking latest Discord version"
 
-  # Spider the download URL to read the 302 Location header and extract the
-  # version number — avoids downloading the full package just to check.
+  # Spider the CDN redirect to read the version from the Location header
+  # without downloading the full package.
   local redirect_url
   redirect_url=$(
-    wget --quiet --server-response --spider "${DISCORD_URL}" 2>&1 \
-      | grep -i 'Location:' \
-      | tail -1 \
-      | awk '{print $2}' \
-      | tr -d '[:space:]'
+    wget --quiet --server-response --spider "${DISCORD_CDN}" 2>&1 \
+      | grep -i 'Location:' | tail -1 | awk '{print $2}' | tr -d '[:space:]'
   )
 
-  REMOTE_VERSION=$(
-    printf '%s' "${redirect_url}" | grep -oP '\d+\.\d+\.\d+' | head -1 || true
-  )
-
-  [[ -n "${REMOTE_VERSION}" ]] \
-    || die "Could not parse version from redirect URL: '${redirect_url}'"
+  REMOTE_VERSION=$(printf '%s' "${redirect_url}" | grep -oP '\d+\.\d+\.\d+' | head -1 || true)
+  [[ -n "${REMOTE_VERSION}" ]] || die "Could not parse version from: '${redirect_url}'"
 
   success "latest: ${REMOTE_VERSION}"
 }
 
 check_version() {
-  local installed
-  installed=$(
-    pacman -Q discord 2>/dev/null \
-      | awk '{print $2}' \
-      | sed 's/^[0-9]*://' \
-      | sed 's/-[^-]*$//' \
-    || echo "not installed"
-  )
+  CURRENT_VERSION=$(grep '^pkgver=' "${PKGBUILD_FILE}" | cut -d= -f2)
 
-  info "installed: ${installed}"
-  info "available: ${REMOTE_VERSION}"
+  info "current: ${CURRENT_VERSION}"
+  info "latest:  ${REMOTE_VERSION}"
 
-  if [[ "${OPT_FORCE}" == false && "${installed}" == "${REMOTE_VERSION}" ]]; then
+  if [[ "${OPT_FORCE}" == false && "${CURRENT_VERSION}" == "${REMOTE_VERSION}" ]]; then
     success "already up-to-date"
     exit 0
   fi
 
-  [[ "${OPT_FORCE}" == true && "${installed}" == "${REMOTE_VERSION}" ]] && \
-    warn "--force set, reinstalling ${REMOTE_VERSION}"
+  [[ "${OPT_FORCE}" == true && "${CURRENT_VERSION}" == "${REMOTE_VERSION}" ]] && \
+    warn "--force set, updating anyway"
 }
 
 download_deb() {
   header "Downloading Discord ${REMOTE_VERSION}"
 
   WORK_DIR=$(mktemp -d /tmp/discord-deb2arch.XXXXXX)
-  DEB_FILE="${WORK_DIR}/discord.deb"
+  DEB_FILE="${WORK_DIR}/discord-${REMOTE_VERSION}.deb"
 
-  wget --show-progress --quiet "${DISCORD_URL}" -O "${DEB_FILE}"
+  local versioned_url="https://stable.dl2.discordapp.net/apps/linux/${REMOTE_VERSION}/discord-${REMOTE_VERSION}.deb"
+  wget --show-progress --quiet "${versioned_url}" -O "${DEB_FILE}"
   success "download complete"
 }
 
-convert_package() {
-  header "Converting to Arch package"
-
-  cd "${WORK_DIR}"
-  # Pipe a newline to skip the editor prompt on older debtap versions
-  printf '\n' | debtap -q "${DEB_FILE}"
-
-  PKG_FILE=$(find "${WORK_DIR}" -maxdepth 1 -name "*.pkg.tar.zst" | head -1 || true)
-  [[ -n "${PKG_FILE}" ]] || die "debtap did not produce a .pkg.tar.zst"
-
-  success "$(basename "${PKG_FILE}")"
+compute_checksum() {
+  header "Computing checksum"
+  SHA256=$(sha256sum "${DEB_FILE}" | awk '{print $1}')
+  success "${SHA256}"
 }
 
-install_package() {
-  header "Installing Discord ${REMOTE_VERSION}"
-  sudo pacman -U --noconfirm "${PKG_FILE}"
-  success "Discord ${REMOTE_VERSION} installed"
+update_pkgbuild() {
+  header "Updating PKGBUILD"
+  sed -i "s/^pkgver=.*/pkgver=${REMOTE_VERSION}/" "${PKGBUILD_FILE}"
+  sed -i "s/^pkgrel=.*/pkgrel=1/" "${PKGBUILD_FILE}"
+  sed -i "s/^sha256sums=.*/sha256sums=('${SHA256}')/" "${PKGBUILD_FILE}"
+  success "pkgver=${REMOTE_VERSION}, pkgrel=1"
+  success "sha256 updated"
+}
+
+update_srcinfo() {
+  header "Regenerating .SRCINFO"
+  cd "${REPO_DIR}"
+  makepkg --printsrcinfo > .SRCINFO
+  success ".SRCINFO updated"
+}
+
+push_to_aur() {
+  header "Pushing to AUR"
+  cd "${REPO_DIR}"
+
+  if ! git remote get-url aur &>/dev/null; then
+    warn "No 'aur' remote configured. Add it with:"
+    info "  git remote add aur ssh://aur@aur.archlinux.org/discord-deb2arch.git"
+    return
+  fi
+
+  git add PKGBUILD .SRCINFO
+  git commit -m "update to ${REMOTE_VERSION}"
+  git push aur main
+  success "pushed to AUR"
 }
 
 main() {
   check_deps
-  [[ "${OPT_UPDATE_DB}" == true ]] && update_debtap_db
   resolve_remote_version
   check_version
+
+  if [[ "${OPT_DRY_RUN}" == true ]]; then
+    download_deb
+    compute_checksum
+    warn "dry run — no changes written"
+    info "would update: ${CURRENT_VERSION} → ${REMOTE_VERSION}"
+    info "sha256: ${SHA256}"
+    exit 0
+  fi
+
   download_deb
-  convert_package
-  install_package
+  compute_checksum
+  update_pkgbuild
+  update_srcinfo
+  push_to_aur
 }
 
 main "$@"
