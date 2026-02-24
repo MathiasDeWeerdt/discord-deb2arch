@@ -1,0 +1,79 @@
+name: Update Discord
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # every hour
+  workflow_dispatch:      # allow manual trigger from GitHub UI
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+
+    steps:
+      - name: Install dependencies
+        run: pacman -Syu --noconfirm --needed git wget binutils
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve latest Discord version
+        id: check
+        run: |
+          REDIRECT=$(
+            wget --quiet --server-response --spider \
+              "https://discord.com/api/download?platform=linux" 2>&1 \
+              | grep -i 'Location:' | tail -1 | awk '{print $2}' | tr -d '[:space:]'
+          )
+          REMOTE=$(printf '%s' "$REDIRECT" | grep -oP '\d+\.\d+\.\d+' | head -1)
+          CURRENT=$(grep '^pkgver=' PKGBUILD | cut -d= -f2)
+
+          echo "remote=${REMOTE}"   >> "$GITHUB_OUTPUT"
+          echo "current=${CURRENT}" >> "$GITHUB_OUTPUT"
+
+          if [[ "$REMOTE" == "$CURRENT" ]]; then
+            echo "needs_update=false" >> "$GITHUB_OUTPUT"
+            echo "Already on ${CURRENT}, nothing to do."
+          else
+            echo "needs_update=true" >> "$GITHUB_OUTPUT"
+            echo "Update available: ${CURRENT} -> ${REMOTE}"
+          fi
+
+      - name: Download .deb and compute checksum
+        if: steps.check.outputs.needs_update == 'true'
+        run: |
+          VERSION="${{ steps.check.outputs.remote }}"
+          wget -q "https://stable.dl2.discordapp.net/apps/linux/${VERSION}/discord-${VERSION}.deb"
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "SHA256=$(sha256sum discord-${VERSION}.deb | awk '{print $1}')" >> "$GITHUB_ENV"
+
+      - name: Update PKGBUILD and .SRCINFO
+        if: steps.check.outputs.needs_update == 'true'
+        run: |
+          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/"          PKGBUILD
+          sed -i "s/^sha256sums=.*/sha256sums=('${SHA256}')/" PKGBUILD
+          makepkg --printsrcinfo > .SRCINFO
+
+      - name: Commit and push to GitHub
+        if: steps.check.outputs.needs_update == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add PKGBUILD .SRCINFO
+          git commit -m "update to ${VERSION}"
+          git push
+
+      - name: Push to AUR
+        if: steps.check.outputs.needs_update == 'true'
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.AUR_SSH_KEY }}" > ~/.ssh/aur_key
+          chmod 600 ~/.ssh/aur_key
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+          git remote add aur ssh://aur@aur.archlinux.org/discord-latest-bin.git
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/aur_key" git push aur main:master
