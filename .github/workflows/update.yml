@@ -81,11 +81,12 @@ jobs:
           printf '%s\n' "${{ secrets.AUR_SSH_KEY }}" > ~/.ssh/aur_key
           chmod 600 ~/.ssh/aur_key
           ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
 
           # Clone the existing AUR repo to build on top of its history.
           # AUR rejects force pushes and repos containing subdirectories.
           TMPDIR=$(mktemp -d)
-          GIT_SSH_COMMAND="ssh -i ~/.ssh/aur_key" \
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/aur_key -o StrictHostKeyChecking=no" \
             git clone ssh://aur@aur.archlinux.org/discord-latest-bin.git "$TMPDIR"
           cp PKGBUILD .SRCINFO "$TMPDIR/"
           cd "$TMPDIR"
@@ -97,4 +98,4 @@ jobs:
             exit 0
           fi
           git commit -m "update to ${VERSION}"
-          GIT_SSH_COMMAND="ssh -i ~/.ssh/aur_key" git push origin master
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/aur_key -o StrictHostKeyChecking=no" git push origin master
